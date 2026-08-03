@@ -10,6 +10,7 @@ const REPORT_FLAG = "--report";
 
 const BASE_URL = "http://127.0.0.1:7070";
 const SIGNIN_ENDPOINT = `${BASE_URL}/v1/signing-key/current`;
+const PUBLICATIONS_ENDPOINT = `${BASE_URL}/v1/publications`;
 
 const KEY_PATH = "/app/keys/current/current.key.pem";
 const execFileAsync = promisify(execFile);
@@ -164,6 +165,30 @@ async function signObj(descriptor_obj, certificatePath) {
 }
 
 
+// Publish descriptor to gateway and return receipt
+async function publication(descriptor_obj, signature, requestToken) {
+    const response = await fetch(
+        PUBLICATIONS_ENDPOINT,
+        {
+            method: "POST",
+            headers: {"content-type": "application/json"},
+            body: JSON.stringify({descriptor: descriptor_obj, signature, request_token: requestToken}),
+        },
+    );
+
+    if (!response.ok) {
+        throw new Error(`Publication request failed and status ${response.status}.`);
+    }
+
+    try {
+        return await response.json();
+    } catch {
+        throw new Error("Publication request returned invalid JSON.");
+    }
+}
+
+
+
 async function main() {
     validate();
 
@@ -199,9 +224,29 @@ async function main() {
 
             console.log(`BUNDLE ${bundle.bundle_id} SIGNED KEY=${signin_key.key_id}`);
 
-            void signature;
-        }
+            // Deterministic token for this bundle.
+            const requestToken = `token-${bundle?.bundle_id}`;
 
+            const receipt = await publication(descriptor_obj, signature, requestToken);
+
+            // Validate receipt.
+            if (!receipt || typeof receipt !== "object") {
+                throw new Error("Publication receipt must be an object.");
+            } else if (typeof receipt.publication_id !== "string" || receipt.publication_id.length === 0) {
+                throw new Error("Publication receipt id missing.");
+            } else if (receipt.request_token !== requestToken) {
+                throw new Error("Publication receipt token mismatch.");
+            } else if (receipt.status !== "PUBLISHED") {
+                throw new Error(`Publication status: ${String(receipt.status)}`);
+            }
+
+            console.log(
+                `BUNDLE ${bundle?.bundle_id} PUBLISHED ` +
+                `RECEIPT=${receipt?.publication_id} ` +
+                `TOKEN=${receipt?.request_token} ` +
+                `STATUS=${receipt?.status}`,
+            );
+        }
 
     } finally {
         await new Promise((res, rej) => {
