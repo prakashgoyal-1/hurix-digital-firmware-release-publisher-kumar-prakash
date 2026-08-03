@@ -227,7 +227,6 @@ async function savePublication(db, {bundleId, requestToken, publicationId, statu
         VALUES (?, ?, ?, ?, ?, ?)
 
         ON CONFLICT (bundle_id) DO UPDATE SET
-            request_token = excluded.request_token,
             publication_id = excluded.publication_id,
             status = excluded.status,
             key_id = excluded.key_id,
