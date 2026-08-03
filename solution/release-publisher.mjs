@@ -2,6 +2,9 @@ import duckdb from "duckdb";
 
 const REPORT_FLAG = "--report";
 
+const BASE_URL = "http://127.0.0.1:7070";
+const SIGNIN_ENDPOINT = `${BASE_URL}/v1/signing-key/current`;
+
 // Validates that the CLI
 function validate(args = process.argv.slice(2)) {
     const [flag] = args;
@@ -67,7 +70,6 @@ async function getBundles(db) {
 }
 
 
-
 // Loads the manifest CSV into a temporary table
 async function loadData(db) {
     const query = `
@@ -100,6 +102,21 @@ async function loadData(db) {
 }
 
 
+// Fetches signing key from gateway
+async function fetchKey() {
+    const response = await fetch(SIGNIN_ENDPOINT);
+
+    if (!response.ok) {
+        throw new Error(`fetchKey failed with status ${response.status}.`);
+    }
+
+    try {
+        return await response.json();
+    } catch {
+        throw new Error("fetchKey: Invalid JSON response.");
+    }
+}
+
 
 async function main() {
     validate();
@@ -110,7 +127,20 @@ async function main() {
         await loadData(db);
 
         const bundles = await getBundles(db);
-        console.log(bundles);
+        console.log('bundles: ', bundles);
+
+        const signin_key = await fetchKey();
+
+        // validate signin_key
+        if (!signin_key || typeof signin_key !== "object") {
+            throw new Error("Signing-key must be an object.");
+        } else if (typeof signin_key.key_id !== "string" || signin_key.key_id.length === 0) {
+            throw new Error("Signing-key id missing.");
+        } else if (typeof signin_key.certificate_ref !== "string" || signin_key.certificate_ref.length === 0) {
+            throw new Error("Signing-key certificate missing.");
+        }
+
+        console.log('signin_key: ',signin_key)
     } finally {
         await new Promise((res, rej) => {
             db.close((error) => {
