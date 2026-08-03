@@ -1,8 +1,25 @@
-#!/bin/bash
-# Placeholder solution entrypoint — candidate/scaffold stub.
-# Exits 0 so the harness proceeds to tests/test.sh; the smoke check only verifies
-# that the harness executes end-to-end, not that the reward is >= 1.0.
-#
-# The reference publisher (publisher/release-publisher.mjs) is authored and graded
-# separately by a human; no solution is included in this folder.
-exit 0
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SOURCE="/solution/release-publisher.mjs"
+
+DIR="/app/publisher"
+
+TARGET="${DIR}/release-publisher.mjs"
+
+if [[ ! -f "${SOURCE}" ]]; then
+
+  echo "Reference publisher not found: ${SOURCE}" >&2
+
+  exit 1
+  
+fi
+
+mkdir -p "${DIR}"
+
+cp "${SOURCE}" "${TARGET}"
+
+chmod 0644 "${TARGET}"
+
+echo "Installed reference publisher at ${TARGET}" >&2
