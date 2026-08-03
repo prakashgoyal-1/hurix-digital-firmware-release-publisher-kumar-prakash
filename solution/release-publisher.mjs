@@ -189,6 +189,70 @@ async function publication(descriptor_obj, signature, requestToken) {
 
 
 
+// create durable storage
+async function createDurableStorage(db) {
+    const query = `
+        CREATE TABLE IF NOT EXISTS publication_state (
+            bundle_id VARCHAR PRIMARY KEY,
+            request_token VARCHAR NOT NULL UNIQUE,
+            publication_id VARCHAR NOT NULL,
+            status VARCHAR NOT NULL,
+            key_id VARCHAR NOT NULL,
+            descriptor VARCHAR NOT NULL,
+            published_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `;
+
+
+    await new Promise((resolve, reject) => {
+        db.run(query, (error) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve();
+        });
+    });
+}
+
+
+
+// gateway-confirmed publication.
+async function savePublication(db, {bundleId, requestToken, publicationId, status, keyId, descriptor}) {
+    const query = `
+        INSERT INTO publication_state (bundle_id, request_token, publication_id, status, key_id, descriptor)
+        VALUES (?, ?, ?, ?, ?, ?)
+
+        ON CONFLICT (bundle_id) DO UPDATE SET
+            request_token = excluded.request_token,
+            publication_id = excluded.publication_id,
+            status = excluded.status,
+            key_id = excluded.key_id,
+            descriptor = excluded.descriptor;
+    `;
+
+    await new Promise((resolve, reject) => {
+        db.run(query,
+            bundleId,
+            requestToken,
+            publicationId,
+            status,
+            keyId,
+            descriptor,
+            (error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve();
+            },
+        );
+    });
+}
+
+
+
 async function main() {
     validate();
 
@@ -196,6 +260,9 @@ async function main() {
 
     try {
         await loadData(db);
+
+        // create publication durable table
+        await createDurableStorage(db);
 
         const bundles = await getBundles(db);
         console.log('bundles: ', bundles);
@@ -246,6 +313,11 @@ async function main() {
                 `TOKEN=${receipt?.request_token} ` +
                 `STATUS=${receipt?.status}`,
             );
+
+
+            // Save after receipt validation.
+            await savePublication(db, {bundleId: bundle?.bundle_id, requestToken, publicationId: receipt?.publication_id, status: receipt?.status, keyId: signin_key?.key_id, descriptor: descriptor_obj});
+
         }
 
     } finally {
