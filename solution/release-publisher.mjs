@@ -1,9 +1,19 @@
 import duckdb from "duckdb";
+import { execFile } from "node:child_process";
+import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
 
 const REPORT_FLAG = "--report";
 
 const BASE_URL = "http://127.0.0.1:7070";
 const SIGNIN_ENDPOINT = `${BASE_URL}/v1/signing-key/current`;
+
+const KEY_PATH = "/app/keys/current/current.key.pem";
+const execFileAsync = promisify(execFile);
+
 
 // Validates that the CLI
 function validate(args = process.argv.slice(2)) {
@@ -118,6 +128,42 @@ async function fetchKey() {
 }
 
 
+// Signs descriptor using certificate and signature ko return karega
+async function signObj(descriptor_obj, certificatePath) {
+    // temp dir 
+    const tempDir = await mkdtemp(
+        join(tmpdir(), "release-publisher-")
+    );
+
+    // temp file path 
+    const descriptorPath = join(tempDir, "descriptor.json");
+    const signaturePath = join(tempDir, "signature.pem");
+
+    try {
+        // writeFile - Descriptor string ko temporary file mein write karta hai:
+        await writeFile(descriptorPath, descriptor_obj, "utf8");
+
+        // execFile Node.js se kisi external executable/program ko run karta hai.
+        await execFileAsync("openssl", ["cms", "-sign", "-in", descriptorPath, "-signer", certificatePath, "-inkey", KEY_PATH, "-outform", "PEM", "-binary", "-out", signaturePath]);
+
+        const signature = await readFile(signaturePath, "utf8");
+
+        if (!signature.startsWith("-----BEGIN CMS-----")) {
+            throw new Error("Invalid CMS signature.");
+        }
+
+        return signature;
+    } catch (error) {
+        throw new Error(`Failed to sign descriptor: ${error.message}`);
+    } finally {
+        await rm(tempDir, {
+            recursive: true,
+            force: true,
+        });
+    }
+}
+
+
 async function main() {
     validate();
 
@@ -141,6 +187,22 @@ async function main() {
         }
 
         console.log('signin_key: ',signin_key)
+
+        for (const bundle of bundles) {
+            const descriptor_obj = JSON.stringify({
+                artifact_count: bundle?.artifact_count,
+                bundle_id: bundle?.bundle_id,
+                total_bytes: bundle?.total_bytes,
+            });
+
+            const signature = await signObj(descriptor_obj, signin_key.certificate_ref);
+
+            console.log(`BUNDLE ${bundle.bundle_id} SIGNED KEY=${signin_key.key_id}`);
+
+            void signature;
+        }
+
+
     } finally {
         await new Promise((res, rej) => {
             db.close((error) => {
