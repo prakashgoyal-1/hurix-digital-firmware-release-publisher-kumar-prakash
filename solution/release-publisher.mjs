@@ -13,6 +13,9 @@ const SIGNIN_ENDPOINT = `${BASE_URL}/v1/signing-key/current`;
 const PUBLICATIONS_ENDPOINT = `${BASE_URL}/v1/publications`;
 
 const KEY_PATH = "/app/keys/current/current.key.pem";
+
+
+//promisify() callback-based function ko Promise-based function mein convert karta hai.
 const execFileAsync = promisify(execFile);
 
 
@@ -253,6 +256,30 @@ async function savePublication(db, {bundleId, requestToken, publicationId, statu
 
 
 
+
+// Find stored successful publication
+async function findStoredPublication(db, bundle_id, request_token) {
+    const query = `
+        SELECT bundle_id, request_token, publication_id, status, key_id, descriptor
+        FROM publication_state
+        WHERE bundle_id = ? AND request_token = ? AND status = 'PUBLISHED'
+        LIMIT 1;
+    `;
+
+    return await new Promise((resolve, reject) => {
+        db.all(query, bundle_id, request_token, (error, rows) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+
+
+            resolve(rows[0] ?? null);
+        });
+    });
+}
+
+
 async function main() {
     validate();
 
@@ -269,6 +296,8 @@ async function main() {
 
         const signin_key = await fetchKey();
 
+        console.log('signin_key: ',signin_key)
+
         // validate signin_key
         if (!signin_key || typeof signin_key !== "object") {
             throw new Error("Signing-key must be an object.");
@@ -278,7 +307,6 @@ async function main() {
             throw new Error("Signing-key certificate missing.");
         }
 
-        console.log('signin_key: ',signin_key)
 
         for (const bundle of bundles) {
             const descriptor_obj = JSON.stringify({
@@ -289,12 +317,34 @@ async function main() {
 
             const signature = await signObj(descriptor_obj, signin_key.certificate_ref);
 
+            console.log('signature: ',signature);
+
+
             console.log(`BUNDLE ${bundle.bundle_id} SIGNED KEY=${signin_key.key_id}`);
 
             // Deterministic token for this bundle.
             const requestToken = `token-${bundle?.bundle_id}`;
 
+
+            // Check local durable state, not the gateway
+            const storedReceipt = await findStoredPublication(db, bundle.bundle_id, requestToken);
+
+
+            console.log('storedReceipt: ', storedReceipt);
+
+
+            if (storedReceipt) {
+                console.log(`BUNDLE ${bundle?.bundle_id} PUBLISHED RECEIPT=${storedReceipt?.publication_id} TOKEN=${storedReceipt?.request_token} STATUS=${storedReceipt?.status}`);
+    
+                continue;
+            }
+
+
             const receipt = await publication(descriptor_obj, signature, requestToken);
+
+
+            console.log('receipt: ', receipt);
+
 
             // Validate receipt.
             if (!receipt || typeof receipt !== "object") {
@@ -307,21 +357,19 @@ async function main() {
                 throw new Error(`Publication status: ${String(receipt.status)}`);
             }
 
-            console.log(
-                `BUNDLE ${bundle?.bundle_id} PUBLISHED ` +
-                `RECEIPT=${receipt?.publication_id} ` +
-                `TOKEN=${receipt?.request_token} ` +
-                `STATUS=${receipt?.status}`,
-            );
 
 
             // Save after receipt validation.
             await savePublication(db, {bundleId: bundle?.bundle_id, requestToken, publicationId: receipt?.publication_id, status: receipt?.status, keyId: signin_key?.key_id, descriptor: descriptor_obj});
+            
+            
+            
+            console.log(`BUNDLE ${bundle?.bundle_id} PUBLISHED RECEIPT=${receipt?.publication_id} TOKEN=${receipt?.request_token} STATUS=${receipt?.status}`);
 
         }
 
-    } finally {
-        await new Promise((res, rej) => {
+    } finally { // console.log("Closing database connection.");
+        await new Promise((res, rej) => { 
             db.close((error) => {
                 if (error) {
                     rej(error);
@@ -335,6 +383,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error(error.message);
+    console.error('Error in main & Error message: ',error.message);
     process.exitCode = 1;
 });
