@@ -23,6 +23,7 @@ const execFileAsync = promisify(execFile);
 function validate(args = process.argv.slice(2)) {
     const [flag] = args;
 
+
     if (args.length !== 1 || flag !== REPORT_FLAG) {
         throw new Error(`Expected argument: ${REPORT_FLAG}`);
     }
@@ -135,9 +136,7 @@ async function fetchKey() {
 // Signs descriptor using certificate and signature ko return karega
 async function signObj(descriptor_obj, certificatePath) {
     // temp dir 
-    const tempDir = await mkdtemp(
-        join(tmpdir(), "release-publisher-")
-    );
+    const tempDir = await mkdtemp(join(tmpdir(), "release-publisher-"));
 
     // temp file path 
     const descriptorPath = join(tempDir, "descriptor.json");
@@ -291,11 +290,8 @@ async function main() {
         await createDurableStorage(db);
 
         const bundles = await getBundles(db);
-        console.log('bundles: ', bundles);
 
         const signin_key = await fetchKey();
-
-        console.log('signin_key: ',signin_key)
 
         // validate signin_key
         if (!signin_key || typeof signin_key !== "object") {
@@ -316,9 +312,6 @@ async function main() {
 
             const signature = await signObj(descriptor_obj, signin_key.certificate_ref);
 
-            console.log('signature: ',signature);
-
-
             console.log(`BUNDLE ${bundle.bundle_id} SIGNED KEY=${signin_key.key_id}`);
 
             // Deterministic token for this bundle.
@@ -329,8 +322,6 @@ async function main() {
             const storedReceipt = await findStoredPublication(db, bundle.bundle_id, requestToken);
 
 
-            console.log('storedReceipt: ', storedReceipt);
-
 
             if (storedReceipt) {
                 console.log(`BUNDLE ${bundle?.bundle_id} PUBLISHED RECEIPT=${storedReceipt?.publication_id} TOKEN=${storedReceipt?.request_token} STATUS=${storedReceipt?.status}`);
@@ -340,9 +331,6 @@ async function main() {
 
 
             const receipt = await publication(descriptor_obj, signature, requestToken);
-
-
-            console.log('receipt: ', receipt);
 
 
             // Validate receipt.
@@ -367,7 +355,7 @@ async function main() {
 
         }
 
-    } finally { // console.log("Closing database connection.");
+    } finally {
         await new Promise((res, rej) => { 
             db.close((error) => {
                 if (error) {
@@ -382,6 +370,6 @@ async function main() {
 }
 
 main().catch((error) => {
-    console.error('Error in main & Error message: ',error.message);
+    console.error(error.message);
     process.exitCode = 1;
 });
