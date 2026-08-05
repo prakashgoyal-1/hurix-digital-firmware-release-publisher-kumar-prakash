@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 
 const REPORT_FLAG = "--report";
-
+const SUPPORTED_ALGORITHM = "sha256WithRSAEncryption";
 const BASE_URL = "http://127.0.0.1:7070";
 const SIGNIN_ENDPOINT = `${BASE_URL}/v1/signing-key/current`;
 const PUBLICATIONS_ENDPOINT = `${BASE_URL}/v1/publications`;
@@ -147,7 +147,7 @@ async function signObj(descriptor_obj, certificatePath) {
         await writeFile(descriptorPath, descriptor_obj, "utf8");
 
         // execFile Node.js se kisi external executable/program ko run karta hai.
-        await execFileAsync("openssl", ["cms", "-sign", "-in", descriptorPath, "-signer", certificatePath, "-inkey", KEY_PATH, "-outform", "PEM", "-binary", "-out", signaturePath]);
+        await execFileAsync("openssl", ["cms", "-sign", "-md", "sha256", "-in", descriptorPath, "-signer", certificatePath, "-inkey", KEY_PATH, "-outform", "PEM", "-binary", "-out", signaturePath]);
 
         const signature = await readFile(signaturePath, "utf8");
 
@@ -300,6 +300,10 @@ async function main() {
             throw new Error("Signing-key id missing.");
         } else if (typeof signin_key.certificate_ref !== "string" || signin_key.certificate_ref.length === 0) {
             throw new Error("Signing-key certificate missing.");
+        } else if (signin_key.status !== "current") {
+            throw new Error(`Signing key is not current: ${String(signin_key.status)}`);
+        } else if (signin_key.algorithm !== SUPPORTED_ALGORITHM) {
+            throw new Error(`Unsupported signing algorithm: ${String(signin_key.algorithm)}`);
         }
 
 
@@ -329,9 +333,7 @@ async function main() {
                 continue;
             }
 
-
             const receipt = await publication(descriptor_obj, signature, requestToken);
-
 
             // Validate receipt.
             if (!receipt || typeof receipt !== "object") {
@@ -345,16 +347,11 @@ async function main() {
             }
 
 
-
             // Save after receipt validation.
             await savePublication(db, {bundleId: bundle?.bundle_id, requestToken, publicationId: receipt?.publication_id, status: receipt?.status, keyId: signin_key?.key_id, descriptor: descriptor_obj});
             
-            
-            
             console.log(`BUNDLE ${bundle?.bundle_id} PUBLISHED RECEIPT=${receipt?.publication_id} TOKEN=${receipt?.request_token} STATUS=${receipt?.status}`);
-
         }
-
     } finally {
         await new Promise((res, rej) => { 
             db.close((error) => {
