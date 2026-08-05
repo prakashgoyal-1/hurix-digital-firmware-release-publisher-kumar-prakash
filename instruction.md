@@ -22,10 +22,12 @@ npm run report
 ### Business rules
 1. Read Manifest CSV.
 2. Remove duplicate rows.
-3. Apply WITHDRAWAL record.
-4. Cound only valid BUILD.
-5. Calulate artifact_count, total_bytes.
-6. Process build_id in order
+3. A duplicate is a row identical across every column (entry_id, bundle_id, component_id, version, size_bytes, record_type, supersedes_id, recorded_at). Collapse to one.
+4. Apply WITHDRAWAL record.
+5. A WITHDRAWAL row's supersedes_id equals the entry_id of the BUILD it cancels; that build is excluded. If every build in a bundle is cancelled, skip the bundle entirely (no report lines for it)
+6. Cound only valid BUILD.
+7. Calulate artifact_count, total_bytes.
+8. Process build_id in order
 
 
 
@@ -34,8 +36,8 @@ npm run report
 2. Status should be current
 3. Algorithm should be corrected.
 4. Not used Revoked key
-5. Signin canonical descriptor
-6. Use detached CMS signature
+6. Generate a canonical JSON descriptor with keys sorted lexicographically.
+7. Sign the descriptor using the current signing key with detached CMS signature
 
 
 
@@ -48,9 +50,10 @@ npm run report
 
 ## 5. Database and idempotency
 1. Save successful publication.
-2. Save Build_id, Publication, Token, Descriptor
-3. Duplicate pulish should not be come on repeated run 
-4. Use old receipt
+2. Persist state at /app/releases.duckdb (created at runtime, do not pre-create)   3. npm run report must reproduce reports/publications.expected.txt exactly (RECEIPT value is masked by the grader)
+4. Save Build_id, Publication, Token, Descriptor
+5. Duplicate pulish should not be come on repeated run 
+6. Use old receipt
 
 
 
