@@ -328,7 +328,7 @@ def test_database_exists(first_run):
 
 
 def test_persisted_publications_match(second_run, expected_bundles, first_report, current_key_metadata):
-    expected_by_bundle = {["bundle_id"]: bundle for bundle in expected_bundles}
+    expected_by_bundle = {bundle["bundle_id"]: bundle for bundle in expected_bundles}
 
     report_by_bundle = {publication["bundle_id"]: publication for publication in first_report}
 
