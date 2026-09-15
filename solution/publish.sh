@@ -2,18 +2,15 @@
 
 set -euo pipefail
 
-SOURCE="/solution/release-publisher.mjs"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE="${SCRIPT_DIR}/release-publisher.mjs"
 
 DIR="/app/publisher"
-
 TARGET="${DIR}/release-publisher.mjs"
 
 if [[ ! -f "${SOURCE}" ]]; then
-
-  echo "Reference publisher not found: ${SOURCE}" >&2
-
-  exit 1
-  
+    echo "Reference publisher not found: ${SOURCE}" >&2
+    exit 1
 fi
 
 mkdir -p "${DIR}"
