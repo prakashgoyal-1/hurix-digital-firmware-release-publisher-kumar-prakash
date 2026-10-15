@@ -2,234 +2,254 @@
 # Author Notes
 
 ## 1. Task Summary
-1. What is the task?
-- The actual assignment tasks is: Candidate -> Implement release-publisher.mjs -> Read firmware manifest -> Reconcile data correctly -> Generate bundle descriptor -> Sign descriptor -> Publish descriptor -> Store publication -> Support repeated execution -> Generate report.
 
-2. What is the main objective?
-- Implement a secure firmwae release publisher.
+**What's the task?**
+Candidate has to write `release-publisher.mjs` that: reads the firmware
+manifest, reconciles it correctly, builds a bundle descriptor, signs it,
+publishes it, stores the publication, handles repeated runs properly, and
+prints a report.
 
+**What's the main goal?**
+Build a firmware release publisher that actually signs things securely.
 
-3. What would be done by Publisher?
-- Read the firmware manifest -> Find valid firmware bundles -> Create release descriptor -> Sign the descriptor using current signing key -> Publish it to the gateway -> Store successful publication state -> Support idempotent reruns -> Print deterministic report.
+**What the publisher does, step by step:**
+Read the firmware manifest → find the valid bundles → build a release
+descriptor → sign it with the current signing key → publish it to the
+gateway → save the publication state → handle repeated runs without
+duplicating anything → print a report that's the same every time.
 
-
-4. Assignment flow:- Old publisher -> Sign in using Revoked key -> GateWay-> Verify using current certificate -> Signature doesn't match -> Untrusted Signature.
-
-
+**How the original bug happens:**
+Old publisher signs with the revoked key → gateway checks the signature
+against the current certificate → it doesn't match → `UNTRUSTED_SIGNATURE`.
 
 ## 2. Design
-1. Read manifest
 
-2. Remove duuplicate
-3. Apply the withdrawal
-4. Make descriptor
-5. Sign in kiya?
-6. Publish gateway or not?
-7. Save DuckDB or not?
-
+1. Read the manifest
+2. Remove duplicates
+3. Apply the withdrawals
+4. Build the descriptor
+5. Sign it
+6. Publish to the gateway
+7. Save to DuckDB
 
 ## 3. Important Rules
-1. Duplicate
-- Two manifest rows are exactly the same. means, If every column in two manifest rows is identical - treat them as one record.
 
-2. Withdrawal
-- Exclude Build records, which referenced by supersedes_id. Meaning exclude records whoseentry_id same as supersedes_id of anthor record with record_type="WITHDRAWAL"
+**Duplicates**
+If every column in two manifest rows matches, that's one record, not two —
+treat it as one.
 
-3. Canonical JSON
-- Create one descriptor per bundle with bundle_id, artifact_count, total_bytes
+**Withdrawals**
+Drop any `BUILD` row whose `entry_id` is referenced as a `supersedes_id` by
+some other row with `record_type = "WITHDRAWAL"`.
 
-4. Current key
-- Always fetch the current signing key.
-- Before signing verify - check this:
-    - Key exists or not
-    - certificate exists or not
-    - Status is "current" or not
-    - algorithm is supported or not
-- Don't use revoked signing key.
+**Canonical JSON**
+One descriptor per bundle, with `bundle_id`, `artifact_count`, `total_bytes`.
 
-5. Idempotency
-- If bundles was already published successfully:
-    - Don't publish it again
-    - Re-use the saved recipt & request_token on repeated runs
+**Current key**
+Always fetch the current signing key first. Before signing, check: does the
+key exist, does the certificate exist, is `status` `"current"`, is the
+algorithm supported. Never use the revoked key.
 
+**Idempotency**
+If a bundle is already published, don't publish it again — reuse the saved
+receipt and request token on repeat runs.
 
-## 4. Verifier design
-1. What does test.sh do?
-- It prepare the verification environments before running the tests cases.
+## 4. Verifier Design
 
-2. Gateway Verification
-- Before python test cases, verifiewer checks provided distribution gateway.
-- Verifier waits till the gateway becomes available to accept request. All requests verified via gateway. After verification completes and gateway process stopped.
+**What does `test.sh` do?**
+Sets up the test environment before the actual test cases run.
 
-3. Pytest Verification
-- Verifier verify Python test cases using pytest.
-- The test cases validate given behaviour of publisher instead of verifying its implemententation and these allows different correct implementations to pass if it's full fills the required behaviour.
+**Gateway check**
+Before the Python tests run, the verifier checks the distribution gateway is
+up and waits until it's ready to accept requests. Every check runs against
+the live gateway. Once verification finishes, the gateway process gets
+stopped.
 
-4. Reward Generation
-- Write reward as 1 else as 0.
+**Pytest check**
+Tests run through pytest, and they check *behavior*, not implementation —
+so any correct implementation can pass, not just this one.
 
+**Reward**
+Writes `1` if everything passes, `0` otherwise.
 
-5. Python tests check
-- The Python tests verify manifest processing, report generation, gateway publication, and database state.
+**What the Python tests actually check**
+Manifest processing, report output, gateway publication, and database
+state. They also check that repeated runs give the same output and don't
+create duplicate publications (idempotency).
 
-- They also verify repeated runs produce the same output without creating duplicate publications (idempotency).
+## 5. Gateway Test Result
 
-
-
-## 5. Gateway Test result
-### Write Command + Output + Conclusion
-
-- Gateway tests run kiye.
-- 5 tests pass hue.
-- Gateway sahi tha.
+Ran the gateway's own test suite — all 5 passed. Gateway itself is fine,
+nothing wrong there.
 
 ### Before Proof A
-- Command:
-`
-docker build -t hurix-firmware-task .\environment
-`
 
-- Output:
+Command:
+```
+docker build -t hurix-firmware-task .\environment
+```
+
+Output (trimmed):
+```
 [+] Building 2.7s (20/20) FINISHED                                       docker:desktop-linux
  => [internal] load build definition from Dockerfile                                     0.1s
- => => transferring dockerfile: 3.65kB                                                   0.0s
- => [internal] load metadata for docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea  2.0s
- => [auth] library/node:pull token for registry-1.docker.io                              0.0s
- => [internal] load .dockerignore                                                        0.0s
- => => transferring context: 147B                                                        0.0s
- => [ 1/14] FROM docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191  0.0s
- => => resolve docker.io/library/node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a9  0.0s
- => [internal] load build context                                                        0.0s
- => => transferring context: 1.27kB                                                      0.0s
- => CACHED [ 2/14] RUN apt-get update     && apt-get install -y --no-install-recommends  0.0s
- => CACHED [ 3/14] RUN pip install --no-cache-dir --break-system-packages         pytes  0.0s
- => CACHED [ 4/14] WORKDIR /app                                                          0.0s
- => CACHED [ 5/14] RUN mkdir -p /app/keys/current /app/keys/revoked  && openssl req -x5  0.0s
- => CACHED [ 6/14] COPY package.json /app/package.json                                   0.0s
+ => [internal] load metadata for docker.io/library/node:20-slim                          2.0s
+ => CACHED [ 5/14] RUN mkdir -p /app/keys/current /app/keys/revoked && openssl req -x5   0.0s
  => CACHED [ 7/14] RUN npm install --no-audit --no-fund                                  0.0s
- => CACHED [ 8/14] COPY distribution-gateway/package.json /app/distribution-gateway/pac  0.0s
- => CACHED [ 9/14] WORKDIR /app/distribution-gateway                                     0.0s
  => CACHED [10/14] RUN npm install --no-audit --no-fund                                  0.0s
- => CACHED [11/14] WORKDIR /app                                                          0.0s
- => CACHED [12/14] COPY distribution-gateway/ /app/distribution-gateway/                 0.0s
  => CACHED [13/14] COPY fixtures/build_manifest.csv /app/fixtures/build_manifest.csv     0.0s
- => CACHED [14/14] COPY reports/publications.expected.txt /app/reports/publications.exp  0.0s
+ => CACHED [14/14] COPY reports/publications.expected.txt /app/reports/...               0.0s
  => exporting to image                                                                   0.2s
- => => exporting layers                                                                  0.0s
- => => exporting manifest sha256:d0444367eb1eb1097dd585bcd57fe741c50f5b03f0bea5df09bf44  0.0s
- => => exporting config sha256:314f694a2e58244f658a69d88abe09a4bead9b35821b48aff1ff68ce  0.0s
- => => exporting attestation manifest sha256:5698f436fe2896eb826dd3610a03f469f012ca72cc  0.1s
- => => exporting manifest list sha256:c10feceade51f3b5387559be529a4465db6f8acb4cf1e0251  0.0s
  => => naming to docker.io/library/hurix-firmware-task:latest                            0.0s
- => => unpacking to docker.io/library/hurix-firmware-task:latest                         0.0s
+```
 
-- Evidence:
-=> naming to docker.io/library/hurix-firmware-task:latest
+Evidence: `=> naming to docker.io/library/hurix-firmware-task:latest`
 
-- Conclusion: Docker image built successfully and the assignment environment was created.
+Conclusion: image built fine, environment is set up correctly.
 
+## 6. Proof A — Missing Publisher
 
-## 6. Proof A - missing publisher
 1. Remove the publisher.
 2. Run the verifier.
-3. Verification failed as expected.
+3. Verification fails, as expected.
 4. Reward = 0.
 
-- Command: 
-`
+Command:
+```
 docker run --rm -it `
   --name hurix-proof-a `
   -v "${PWD}\tests:/tests:ro" `
   hurix-firmware-task bash
-`
-+
-`
+```
+then:
+```
 bash /tests/test.sh
-`
+```
 
-- Evidence
+Evidence:
+```
 ...
-========================== 4 failed, 2 warnings, 9 errors in 0.75s ===========================
+4 failed, 2 warnings, 9 errors in 0.75s
 pytest exit code: 1
+```
 
-- Reward
-`
+Reward check:
+```
 cat /logs/verifier/reward.txt
-`
+```
+Output: `0`
 
-- Output:
-0
+Conclusion: verification fails as expected because
+`release-publisher.mjs` isn't installed. Confirms the verifier correctly
+rejects an incomplete solution.
 
-- Conclusion:Verification failed as expected because release-publisher.mjs was not installed. It proves the verifier correctly rejects an incomplete solution.
+## 7. Proof B — Correct Publisher and Idempotency
 
-
-## 7. Proof B - correct publisher and idempotency
-1. Installed the publisher.
+1. Install the publisher.
 2. Run the verifier.
-3. All 13 tests passed.
+3. All 13 tests pass.
 4. Reward = 1.
-5. Repeated execution reused the existing publication
-6. No duplicate publication was created.
+5. Repeated run reuses the existing publication.
+6. No duplicate publication gets created.
 
-### Start new container and run this command:
-` 
+Start a fresh container:
+```
 docker run --rm -it `
   --name hurix-proof-b `
   -v "${PWD}\solution:/solution:ro" `
   -v "${PWD}\tests:/tests:ro" `
   hurix-firmware-task bash
-`
+```
 
-### Install solution 
-- command:
-`
+Install the solution:
+```
 bash /solution/publish.sh
-`
+```
+Output: `Installed reference publisher at /app/publisher/release-publisher.mjs`
 
-- Output: Installed reference publisher at /app/publisher/release-publisher.mjs
-
-### Verify  
-- command:
-`
+Check it landed:
+```
 ls /app/publisher
-`
-- 
+```
+Output: `release-publisher.mjs`
 
-- Output: release-publisher.ms
-
-### Verifier
-- command:
-`
+Run the verifier:
+```
 bash /tests/test.sh
-`
+```
+Evidence: `13 passed`, `pytest exit code: 0`
 
-- Evidence:
-13 passed
-pytest exit code: 0
+Reward check:
+```
+cat /logs/verifier/reward.txt
+```
+Output: `1`
 
-
-## Reward
-- Command: cat /logs/verifier/reward.txt
-
-- Output: 1
-
-## Conclusion: All verifier tests passed successfully and reward value became 1.
-
+Conclusion: all verifier tests pass, reward is 1.
 
 ## 8. Idempotency Proof
-1. Run the publisher twice
-2. Both runs produces same output.
-3. Existing receipt was reused
-4. No duplicate publication created
 
+1. Run the publisher twice.
+2. Both runs produce the same output.
+3. Existing receipt gets reused.
+4. No duplicate publication gets created.
 
-- Command
-`
+Command:
+```
 node publisher/release-publisher.mjs --report > first.txt
 node publisher/release-publisher.mjs --report > second.txt
 diff -u first.txt second.txt
-`
+```
 
-- Evidence: no output
+Evidence: no output (the diff is empty).
 
-- Conclusion: Repeated execution gives identical bytes reports Therefor no difference found.
+Conclusion: repeated runs give byte-identical reports, so there's no
+difference to show.
+
+## 9. Resubmission Fix — Reference Publisher Install Path
+
+**What was wrong**
+
+`solution/publish.sh` originally had a hardcoded path:
+`SOURCE="/solution/release-publisher.mjs"`. That matched the example mount
+path in the submission handbook (`-v "$PWD/../solution":/solution:ro`), but
+the real grading harness doesn't necessarily mount `solution/` at
+`/solution`. If it mounts the folder somewhere else, the hardcoded path
+never resolves, `publish.sh` exits before copying the file, and the
+reference implementation never lands at
+`/app/publisher/release-publisher.mjs` — so Proof B can't pass, even though
+the solution itself is correct.
+
+**The fix**
+
+`solution/publish.sh` now resolves the source file relative to its own
+script location instead of a fixed path:
+
+```
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE="${SCRIPT_DIR}/release-publisher.mjs"
+```
+
+Since `release-publisher.mjs` always ships alongside `publish.sh` inside
+`solution/`, this resolves correctly no matter where that folder gets
+mounted at grading time.
+
+**Re-verification** (fresh, no-cache image, same two proofs)
+
+- `docker build --no-cache -t hurix-verify environment/`
+- Proof A (no solution mounted): `bash /tests/test.sh` → 4 failed, 9 errors
+  → `reward.txt` = `0`.
+- Proof B, run twice with two different mount points to confirm the fix
+  isn't tied to one specific path:
+  - `-v .../solution:/solution:ro` (the handbook's own example path) →
+    `bash /solution/publish.sh && bash /tests/test.sh` → 13 passed →
+    `reward.txt` = `1`.
+  - `-v .../solution:/mnt/weird-solution-path:ro` (an arbitrary different
+    path) → `bash /mnt/weird-solution-path/publish.sh && bash /tests/test.sh`
+    → 13 passed → `reward.txt` = `1`.
+
+**Conclusion**
+
+The empty run still scores 0, and the reference solution now scores 1 no
+matter where `solution/` gets mounted — which is exactly what the earlier
+review flagged as broken.
